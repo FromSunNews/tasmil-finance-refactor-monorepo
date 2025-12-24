@@ -19,14 +19,44 @@ export function generateUUID(): string {
 }
 
 export function convertToUIMessages(messages: DBMessage[]): ChatMessage[] {
-  return messages.map((message) => ({
-    id: message.id,
-    role: message.role as "user" | "assistant" | "system",
-    parts: message.parts as UIMessagePart<CustomUIDataTypes, ChatTools>[],
-    metadata: {
-      createdAt: formatISO(message.createdAt),
-    },
-  }));
+  return messages.map((message) => {
+    // Handle createdAt - it might be a string from API or a Date object
+    let createdAt: Date;
+    
+    if (!message.createdAt) {
+      // If createdAt is null/undefined, use current date
+      createdAt = new Date();
+    } else if (typeof message.createdAt === "string") {
+      const parsedDate = new Date(message.createdAt);
+      // Validate parsed date
+      if (Number.isNaN(parsedDate.getTime())) {
+        console.warn(`[convertToUIMessages] Invalid date string: ${message.createdAt}, using current date`);
+        createdAt = new Date();
+      } else {
+        createdAt = parsedDate;
+      }
+    } else if (message.createdAt instanceof Date) {
+      createdAt = message.createdAt;
+    } else {
+      // Try to convert unknown type to Date
+      const parsedDate = new Date(message.createdAt as unknown as string | number);
+      if (Number.isNaN(parsedDate.getTime())) {
+        console.warn(`[convertToUIMessages] Invalid date value: ${message.createdAt}, using current date`);
+        createdAt = new Date();
+      } else {
+        createdAt = parsedDate;
+      }
+    }
+
+    return {
+      id: message.id,
+      role: message.role as "user" | "assistant" | "system",
+      parts: message.parts as UIMessagePart<CustomUIDataTypes, ChatTools>[],
+      metadata: {
+        createdAt: formatISO(createdAt),
+      },
+    };
+  });
 }
 
 export function getTextFromMessage(message: ChatMessage): string {

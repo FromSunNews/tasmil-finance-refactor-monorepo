@@ -43,8 +43,10 @@ function PureEditor({
 
   useEffect(() => {
     if (containerRef.current && !editorRef.current) {
+      const doc = buildDocumentFromContent(content);
+      
       const state = EditorState.create({
-        doc: buildDocumentFromContent(content),
+        doc,
         plugins: [
           ...exampleSetup({ schema: documentSchema, menuBar: false }),
           inputRules({
@@ -73,7 +75,6 @@ function PureEditor({
       }
     };
     // NOTE: we only want to run this effect once
-    // eslint-disable-next-line
   }, [content]);
 
   useEffect(() => {
@@ -92,35 +93,39 @@ function PureEditor({
 
   useEffect(() => {
     if (editorRef.current && content) {
-      const currentContent = buildContentFromDocument(
-        editorRef.current.state.doc
-      );
-
-      if (status === "streaming") {
-        const newDocument = buildDocumentFromContent(content);
-
-        const transaction = editorRef.current.state.tr.replaceWith(
-          0,
-          editorRef.current.state.doc.content.size,
-          newDocument.content
+      try {
+        const currentContent = buildContentFromDocument(
+          editorRef.current.state.doc
         );
 
-        transaction.setMeta("no-save", true);
-        editorRef.current.dispatch(transaction);
-        return;
-      }
+        if (status === "streaming") {
+          const newDocument = buildDocumentFromContent(content);
 
-      if (currentContent !== content) {
-        const newDocument = buildDocumentFromContent(content);
+          const transaction = editorRef.current.state.tr.replaceWith(
+            0,
+            editorRef.current.state.doc.content.size,
+            newDocument.content
+          );
 
-        const transaction = editorRef.current.state.tr.replaceWith(
-          0,
-          editorRef.current.state.doc.content.size,
-          newDocument.content
-        );
+          transaction.setMeta("no-save", true);
+          editorRef.current.dispatch(transaction);
+          return;
+        }
 
-        transaction.setMeta("no-save", true);
-        editorRef.current.dispatch(transaction);
+        if (currentContent !== content) {
+          const newDocument = buildDocumentFromContent(content);
+
+          const transaction = editorRef.current.state.tr.replaceWith(
+            0,
+            editorRef.current.state.doc.content.size,
+            newDocument.content
+          );
+
+          transaction.setMeta("no-save", true);
+          editorRef.current.dispatch(transaction);
+        }
+      } catch {
+        // Silently handle errors
       }
     }
   }, [content, status]);
@@ -146,7 +151,7 @@ function PureEditor({
   }, [suggestions, content]);
 
   return (
-    <div className="prose dark:prose-invert relative" ref={containerRef} />
+    <div className="prose dark:prose-invert relative [&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0" ref={containerRef} />
   );
 }
 

@@ -144,7 +144,10 @@ export function Chat({
     onData: (dataPart) => {
       setDataStream((ds) => (ds ? [...ds, dataPart] : []));
     },
-    onFinish: () => {
+    onFinish: ({ finishReason, usage }) => {
+      if (usage) {
+        console.log("[Chat] Usage:", usage);
+      }
       mutate(unstable_serialize(getChatHistoryPaginationKey));
     },
     onError: (error) => {

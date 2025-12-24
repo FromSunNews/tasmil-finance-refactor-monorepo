@@ -6,6 +6,10 @@ export const chatApi = {
     return apiClient.stream("/api/chat", body);
   },
 
+  async getChat(id: string) {
+    return apiClient.get(`/api/chat/${id}`);
+  },
+
   async getStream(chatId: string): Promise<ReadableStream<Uint8Array> | null> {
     try {
       return apiClient.stream(`/api/chat/${chatId}/stream`, undefined);

@@ -12,7 +12,8 @@ import {
 import useSWR from "swr";
 import { useArtifact } from "@/hooks/use-artifact";
 import type { Document } from "@/lib/db/schema";
-import { cn, fetcher } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { documentApi } from "@/lib/api/document";
 import type { ArtifactKind, UIArtifact } from "./artifact";
 import { CodeEditor } from "./code-editor";
 import { DocumentToolCall, DocumentToolResult } from "./document";
@@ -37,9 +38,24 @@ export function DocumentPreview({
 
   const { data: documents, isLoading: isDocumentsFetching } = useSWR<
     Document[]
-  >(result ? `/api/document?id=${result.id}` : null, fetcher);
+  >(
+    result ? `document-preview-${result.id}` : null,
+    async () => {
+      if (!result?.id) {
+        return [];
+      }
+      return documentApi.getDocument(result.id);
+    }
+  );
 
-  const previewDocument = useMemo(() => documents?.[0], [documents]);
+  const previewDocument = useMemo(() => {
+    if (documents && documents.length > 0) {
+      // Get the most recent document (last in array)
+      return documents.at(-1);
+    }
+    return null;
+  }, [documents]);
+  
   const hitboxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -57,6 +73,7 @@ export function DocumentPreview({
       }));
     }
   }, [artifact.documentId, setArtifact]);
+
 
   if (artifact.isVisible) {
     if (result) {
@@ -245,6 +262,8 @@ const DocumentHeader = memo(PureDocumentHeader, (prevProps, nextProps) => {
 const DocumentContent = ({ document }: { document: Document }) => {
   const { artifact } = useArtifact();
 
+  const content = document.content ?? "";
+
   const containerClassName = cn(
     "h-[257px] overflow-y-scroll rounded-b-2xl border border-t-0 dark:border-zinc-700 dark:bg-muted",
     {
@@ -254,7 +273,7 @@ const DocumentContent = ({ document }: { document: Document }) => {
   );
 
   const commonProps = {
-    content: document.content ?? "",
+    content,
     isCurrentVersion: true,
     currentVersionIndex: 0,
     status: artifact.status,

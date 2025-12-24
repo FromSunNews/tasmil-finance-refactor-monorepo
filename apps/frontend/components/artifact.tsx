@@ -19,7 +19,7 @@ import { textArtifact } from "@/artifacts/text/client";
 import { useArtifact } from "@/hooks/use-artifact";
 import type { Document, Vote } from "@repo/db";
 import type { Attachment, ChatMessage } from "@repo/api";
-import { fetcher } from "@/lib/utils";
+import { documentApi } from "@/lib/api/document";
 import { ArtifactActions } from "./artifact-actions";
 import { ArtifactCloseButton } from "./artifact-close-button";
 import { ArtifactMessages } from "./artifact-messages";
@@ -89,16 +89,57 @@ function PureArtifact({
 }) {
   const { artifact, setArtifact, metadata, setMetadata } = useArtifact();
 
+  // Restore artifact state from messages on mount/reload
+  useEffect(() => {
+    if (artifact.documentId === "init" && messages.length > 0) {
+      // Find the most recent createDocument tool result
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const message = messages[i];
+        if (message && message.role === "assistant" && message.parts) {
+          for (const part of message.parts) {
+            if (
+              part.type === "tool-createDocument" &&
+              "output" in part &&
+              part.output &&
+              typeof part.output === "object" &&
+              !("error" in part.output) &&
+              "id" in part.output
+            ) {
+              const result = part.output as { id: string; title: string; kind: ArtifactKind; content?: string };
+              setArtifact((currentArtifact) => ({
+                ...currentArtifact,
+                documentId: result.id,
+                title: result.title,
+                kind: result.kind,
+                status: "idle",
+                content: "",
+              }));
+              return; // Exit both loops
+            }
+          }
+        }
+      }
+    }
+  }, [messages, artifact.documentId, setArtifact]);
+
+  const documentId = artifact.documentId !== "init" && artifact.status !== "streaming" ? artifact.documentId : null;
+  
   const {
     data: documents,
     isLoading: isDocumentsFetching,
     mutate: mutateDocuments,
   } = useSWR<Document[]>(
-    artifact.documentId !== "init" && artifact.status !== "streaming"
-      ? `/api/document?id=${artifact.documentId}`
-      : null,
-    fetcher
+    documentId ? `document-${documentId}` : null,
+    async (key: string): Promise<Document[]> => {
+      const id = key.replace("document-", "");
+      if (!id || id === "init") {
+        return [];
+      }
+      const result = (await documentApi.getDocument(id)) as Document[];
+      return result;
+    }
   );
+
 
   const [mode, setMode] = useState<"edit" | "diff">("edit");
   const [document, setDocument] = useState<Document | null>(null);
@@ -135,7 +176,7 @@ function PureArtifact({
       }
 
       mutate<Document[]>(
-        `/api/document?id=${artifact.documentId}`,
+        `document-${artifact.documentId}`,
         async (currentDocuments) => {
           if (!currentDocuments) {
             return [];
@@ -149,14 +190,12 @@ function PureArtifact({
           }
 
           if (currentDocument.content !== updatedContent) {
-            await fetch(`/api/document?id=${artifact.documentId}`, {
-              method: "POST",
-              body: JSON.stringify({
-                title: artifact.title,
-                content: updatedContent,
-                kind: artifact.kind,
-              }),
-            });
+            await documentApi.createDocument(
+              artifact.documentId,
+              artifact.title,
+              artifact.kind,
+              updatedContent
+            );
 
             setIsContentDirty(false);
 
@@ -460,25 +499,29 @@ function PureArtifact({
             </div>
 
             <div className="h-full max-w-full! items-center overflow-y-scroll bg-background dark:bg-muted">
-              <artifactDefinition.content
-                content={
-                  isCurrentVersion
-                    ? artifact.content
-                    : getDocumentContentById(currentVersionIndex)
-                }
-                currentVersionIndex={currentVersionIndex}
-                getDocumentContentById={getDocumentContentById}
-                isCurrentVersion={isCurrentVersion}
-                isInline={false}
-                isLoading={isDocumentsFetching && !artifact.content}
-                metadata={metadata}
-                mode={mode}
-                onSaveContent={saveContent}
-                setMetadata={setMetadata}
-                status={artifact.status}
-                suggestions={[]}
-                title={artifact.title}
-              />
+              {(() => {
+                const contentToRender = isCurrentVersion
+                  ? artifact.content
+                  : getDocumentContentById(currentVersionIndex);
+                
+                return (
+                  <artifactDefinition.content
+                    content={contentToRender}
+                    currentVersionIndex={currentVersionIndex}
+                    getDocumentContentById={getDocumentContentById}
+                    isCurrentVersion={isCurrentVersion}
+                    isInline={false}
+                    isLoading={isDocumentsFetching && !artifact.content}
+                    metadata={metadata}
+                    mode={mode}
+                    onSaveContent={saveContent}
+                    setMetadata={setMetadata}
+                    status={artifact.status}
+                    suggestions={[]}
+                    title={artifact.title}
+                  />
+                );
+              })()}
 
               <AnimatePresence>
                 {isCurrentVersion && (

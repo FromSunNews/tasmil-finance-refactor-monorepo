@@ -94,6 +94,23 @@ export class ChatController {
     }
   }
 
+  @Get(":id")
+  async getChat(
+    @Param("id") id: string,
+    @Req() req: Request
+  ) {
+    const user = req.user as JwtPayload;
+
+    if (!user) {
+      throw new HttpException(
+        new ChatSDKError("unauthorized:chat"),
+        HttpStatus.UNAUTHORIZED
+      );
+    }
+
+    return this.chatService.getChatWithMessages(id, user.id);
+  }
+
   @Get(":id/stream")
   @Sse()
   async getStream(

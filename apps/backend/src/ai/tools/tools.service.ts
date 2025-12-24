@@ -11,10 +11,15 @@ import {
 } from "@repo/db";
 import { generateUUID } from "@repo/db";
 import { AiService } from "../ai.service";
+import { createDocumentHandlers, type ArtifactKind } from "../artifacts";
 
 @Injectable()
 export class ToolsService {
-  constructor(private aiService: AiService) {}
+  private documentHandlers: ReturnType<typeof createDocumentHandlers>;
+
+  constructor(private aiService: AiService) {
+    this.documentHandlers = createDocumentHandlers(aiService);
+  }
 
   getWeather() {
     return tool({
@@ -105,18 +110,22 @@ export class ToolsService {
           transient: true,
         });
 
-        // Simplified document creation - can be expanded with artifact handlers
-        const content = `Document: ${title}\n\nKind: ${kind}`;
+        // Find and call the appropriate document handler
+        const documentHandler = this.documentHandlers.find(
+          (handler) => handler.kind === kind
+        );
 
-        if (session.id) {
-          await saveDocument({
-            id,
-            title,
-            kind,
-            content,
-            userId: session.id,
-          });
+        if (!documentHandler) {
+          throw new Error(`No document handler found for kind: ${kind}`);
         }
+
+        // Call the document handler to generate content
+        await documentHandler.onCreateDocument({
+          id,
+          title,
+          dataStream,
+          session,
+        });
 
         dataStream.write({ type: "data-finish", data: null, transient: true });
 
@@ -157,18 +166,24 @@ export class ToolsService {
           transient: true,
         });
 
-        // Simplified update - can be expanded with artifact handlers
-        const updatedContent = `${document.content}\n\nUpdated: ${description}`;
+        // Find and call the appropriate document handler
+        const documentHandler = this.documentHandlers.find(
+          (handler) => handler.kind === document.kind
+        );
 
-        if (session.id) {
-          await saveDocument({
-            id: document.id,
-            title: document.title,
-            kind: document.kind,
-            content: updatedContent,
-            userId: session.id,
-          });
+        if (!documentHandler) {
+          return {
+            error: `No document handler found for kind: ${document.kind}`,
+          };
         }
+
+        // Call the document handler to update content
+        await documentHandler.onUpdateDocument({
+          document,
+          description,
+          dataStream,
+          session,
+        });
 
         dataStream.write({ type: "data-finish", data: null, transient: true });
 

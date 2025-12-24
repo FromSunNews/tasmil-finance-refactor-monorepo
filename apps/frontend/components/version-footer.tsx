@@ -8,6 +8,7 @@ import { useWindowSize } from "usehooks-ts";
 import { useArtifact } from "@/hooks/use-artifact";
 import type { Document } from "@repo/db";
 import { getDocumentTimestampByIndex } from "@/lib/utils";
+import { documentApi } from "@/lib/api/document";
 import { LoaderIcon } from "./icons";
 import { Button } from "./ui/button";
 
@@ -56,15 +57,10 @@ export const VersionFooter = ({
             setIsMutating(true);
 
             mutate(
-              `/api/document?id=${artifact.documentId}`,
-              await fetch(
-                `/api/document?id=${artifact.documentId}&timestamp=${getDocumentTimestampByIndex(
-                  documents,
-                  currentVersionIndex
-                )}`,
-                {
-                  method: "DELETE",
-                }
+              `document-${artifact.documentId}`,
+              await documentApi.deleteDocument(
+                artifact.documentId,
+                getDocumentTimestampByIndex(documents, currentVersionIndex)
               ),
               {
                 optimisticData: documents

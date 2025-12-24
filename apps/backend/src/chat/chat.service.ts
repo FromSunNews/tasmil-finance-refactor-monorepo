@@ -180,6 +180,10 @@ export class ChatService {
     const streamId = generateUUID();
     await createStreamId({ streamId, chatId: id });
 
+    // Store result to access usage in onFinish
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let streamTextResult: any = null;
+
     const stream = createUIMessageStream({
       originalMessages: isToolApprovalFlow ? uiMessages : undefined,
       execute: async ({ writer: dataStream }) => {
@@ -241,6 +245,9 @@ export class ChatService {
             },
           });
 
+          // Store result to access usage later
+          streamTextResult = result;
+
           console.log(`[Chat] streamText result obtained`);
           void result.consumeStream();
 
@@ -264,6 +271,16 @@ export class ChatService {
       onFinish: async ({ messages: finishedMessages }) => {
         console.log("[Chat] onFinish called with messages:", finishedMessages.length);
         try {
+          // Get usage from streamText result if available
+          let usage = null;
+          if (streamTextResult) {
+            try {
+              usage = await streamTextResult.usage;
+            } catch {
+              // Usage might not be available yet
+            }
+          }
+
           if (isToolApprovalFlow) {
             for (const finishedMsg of finishedMessages) {
               const existingMsg = uiMessages.find((m) => m.id === finishedMsg.id);
@@ -302,6 +319,9 @@ export class ChatService {
               })),
             });
             console.log("[Chat] Messages saved successfully");
+            if (usage) {
+              console.log("[Chat] Usage:", usage);
+            }
           } else {
             console.log("[Chat] No finished messages to save");
           }
@@ -437,6 +457,32 @@ export class ChatService {
     
     // Use observeOn to ensure messages are sent asynchronously and not buffered
     return observable.pipe(observeOn(asyncScheduler));
+  }
+
+  async getChatWithMessages(chatId: string, userId: string) {
+    const chat = await getChatById({ id: chatId });
+
+    if (!chat) {
+      throw new HttpException(
+        new ChatSDKError("not_found:chat"),
+        HttpStatus.NOT_FOUND
+      );
+    }
+
+    if (chat.visibility === "private" && chat.userId !== userId) {
+      throw new HttpException(
+        new ChatSDKError("forbidden:chat"),
+        HttpStatus.FORBIDDEN
+      );
+    }
+
+    const messagesFromDb = await getMessagesByChatId({ id: chatId });
+    const uiMessages = this.convertToUIMessages(messagesFromDb);
+
+    return {
+      chat,
+      messages: uiMessages,
+    };
   }
 
   async deleteChat(id: string, userId: string) {
